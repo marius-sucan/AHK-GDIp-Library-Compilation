@@ -513,8 +513,8 @@ Gdi_GetTextExtentPoint32(hDC, string, ByRef w, ByRef h) {
    VarSetCapacity(SIZE, 8, 0)
    E := DllCall("gdi32\GetTextExtentPoint32"
             ,"UPtr", hDC                                ;-- hDC
-            ,"Str", string                             ;-- lpString
-            ,"Int", StrLen(string)                     ;-- c (string length)
+            ,"Str", string                              ;-- lpString
+            ,"Int", StrLen(string)                      ;-- c (string length)
             ,"UPtr", &SIZE)                             ;-- lpSize
 
   w := NumGet(SIZE, 0, "Int")
@@ -778,6 +778,8 @@ Gdi_SetTextAlign(hDC, flags) {
 }
 
 Gdi_SetTextColor(hDC, color) {
+; If the function succeeds, the return value is a color reference for the previous text color as a COLORREF value.
+; If the function fails, the return value is CLR_INVALID.
      Return DllCall("gdi32\SetTextColor", "UPtr", hDC, "UInt", color)
 }
 
@@ -2898,9 +2900,13 @@ Gdi_SetGraphicsMode(hDC, mode) {
 
 Gdi_GetBitmapInfo(hBitmap) {
    ; from TheArkive; returns an object with properties
+   ; For uncompressed RGB formats, the minimum stride is always the image width
+   ; in bytes, rounded up to the nearest DWORD. You can use the following formula to calculate the stride and image size:
+   ; stride = ((((biWidth * biBitCount) + 31) & ~31) >> 3);
+   ; biSizeImage = abs(biHeight) * stride;
 
    oi_size := DllCall("GetObject", "UPtr", hBitmap, "Int", 0, "UPtr", 0)  ; get size of struct
-   size := VarSetCapacity(oi, (A_PtrSize = 8) ? 104 : 84, 0)           ; always use max size of struct
+   size := VarSetCapacity(oi, (A_PtrSize = 8) ? 104 : 84, 0)              ; always use max size of struct
    DllCall("GetObject", "UPtr", hBitmap, "Int", size, "UPtr", &oi)        ; finally, call GetObject and get data
 
    obj := []
@@ -2912,7 +2918,7 @@ Gdi_GetBitmapInfo(hBitmap) {
    obj.Stride := NumGet(oi, 12, "UInt")
    obj.Planes := NumGet(oi, 16, "UShort")
    obj.Bpp := NumGet(oi, 18, "UShort")
-   obj.hPtr := NumGet(oi, 24, "UPtr")
+   obj.RawBits := NumGet(oi, 24, "UPtr") ; A pointer to the location of the raw bits of the bitmap
 
    ; BITMAPINFOHEADER struct / DIBSECTION struct
    obj.Struct := NumGet(oi,32,"UInt")
@@ -2996,7 +3002,7 @@ calcFntHeightFromPtsSize(ptsSize) {
 }
 
 Gdi_GetLibVersion() {
-  return 1.30 ; samedi 28 mai 2022 ; 28/05/2022
+  return 1.31 ; mercredi samedi 21 janvier 2023; 21/01/2023
 }
 
 

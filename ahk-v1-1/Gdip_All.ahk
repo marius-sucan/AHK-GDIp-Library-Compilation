@@ -10,6 +10,7 @@
 ; NOTES: The drawing of GDI+ Bitmaps is limited to a size of 32767 pixels
 ; in either direction (width, height). This limit applies only if the
 ; interpolation mode is set to NearestNeighbor for the Graphics Object.
+;
 ; To calculate the largest bitmap you can create:
 ;    The maximum object size is 2GB = 2,147,483,648 bytes
 ;    Default bitmap is 32bpp (4 bytes), the largest area we can have is 2GB / 4 = 536,870,912 bytes
@@ -20,6 +21,7 @@
 ;
 ; Gdip standard library versions:
 ; by Marius Șucan - gathered user-contributed functions and implemented hundreds of new functions
+; - v1.97 [28/01/2025]
 ; - v1.96 [22/08/2023]
 ; - v1.95 [21/04/2023]
 ; - v1.94 [23/03/2023]
@@ -78,6 +80,7 @@
 ; - v1.01 [05/31/2008]
 ;
 ; Detailed history:
+; - 28/01/2025 = added the Gdip_GraphicsPathIterator class ; users can now work with subpaths/figures; added Gdip_BitmapApplyHSL(), Gdip_BitmapApplyTint(), Gdip_BitmapApplyBrightnessContrast()
 ; - 22/08/2023 = bug fix related to Gdip_SaveBitmapToFile() and other minor changes
 ; - 21/04/2023 = bug fixes related to Gdip_TextToGraphics() and private font collections
 ; - 23/03/2023 = added Gdip_SaveAddImage(), Gdip_SaveImagesInTIFF(), Gdip_GetFrameDelay(), Gdip_GetImageEncodersList(), and other fixes, and minor functions
@@ -883,7 +886,7 @@ Gdip_LibraryVersion() {
 ;                 Updated by Marius Șucan reflecting the work on Gdip_all extended compilation
 
 Gdip_LibrarySubVersion() {
-   return 1.96 ; 22/08/2023
+   return 1.97 ; 28/01/2025
 }
 
 ;#####################################################################################
@@ -2764,7 +2767,7 @@ Gdip_GetImagePixelFormat(pBitmap, mode:=0) {
 ; *PXF64PARGB = 0x001A400E    ; 64 bpp; 16 bits for each RGB and alpha, pre-multiplied
 ; *PXF32CMYK = 0x200F         ; 32 bpp; CMYK
 
-; NOTE: GDI+ does not fully support the formats marked with an asterisk (*).
+; *NOTE: GDI+ does not fully support the formats marked with an asterisk (*).
 ; Gdip_GraphicsFromImage() will fail on bitmaps with these pixel formats.
 
 ; INDEXED [1-bits, 4-bits and 8-bits] pixel formats rely on color palettes.
@@ -3119,8 +3122,11 @@ Gdip_CreateBitmapFromDirectDrawSurface(IDirectDrawSurface) {
 }
 
 Gdip_CreateBitmap(Width, Height, PixelFormat:=0, Stride:=0, Scan0:=0) {
-; By default, this function creates a new 32-ARGB bitmap.
-; modified by Marius Șucan
+; By default, this function creates by default a new 32-ARGB bitmap. Pass a specific PixelFormat if otherwise needed.
+; scan0 - Optional pointer to an array of bytes that contains the pixel data.
+;         The caller is responsible for allocating and freeing the block of memory pointed to by this parameter
+; function modified by Marius Șucan
+
    If (!Width || !Height)
    {
       gdipLastError := 2
@@ -3144,11 +3150,11 @@ Gdip_CreateBitmapFromClipboard() {
 
    pid := DllCall("GetCurrentProcessId","uint")
    hwnd := WinExist("ahk_pid " . pid)
-   if !DllCall("IsClipboardFormatAvailable", "uint", 8)  ; CF_DIB = 8
+   If !DllCall("IsClipboardFormatAvailable", "uint", 8)  ; CF_DIB = 8
    {
-      if DllCall("IsClipboardFormatAvailable", "uint", 2)  ; CF_BITMAP = 2
+      If DllCall("IsClipboardFormatAvailable", "uint", 2)  ; CF_BITMAP = 2
       {
-         if !DllCall("OpenClipboard", "UPtr", hwnd)
+         If !DllCall("OpenClipboard", "UPtr", hwnd)
             return -1
 
          hData := DllCall("User32.dll\GetClipboardData", "UInt", 0x0002, "UPtr")
@@ -3161,33 +3167,25 @@ Gdip_CreateBitmapFromClipboard() {
       return -2
    }
 
-   if !DllCall("OpenClipboard", "UPtr", hwnd)
+   If !DllCall("OpenClipboard", "UPtr", hwnd)
       return -1
 
    hBitmap := DllCall("GetClipboardData", "uint", 2, "UPtr")
-   if !hBitmap
-   {
-      DllCall("CloseClipboard")
-      return -3
-   }
-
    DllCall("CloseClipboard")
-   If hBitmap
-   {
-      pBitmap := Gdip_CreateARGBBitmapFromHBITMAP(hBitmap) ; this function can return a completely empty/transparent bitmap
-      If pBitmap
-         isUniform := Gdip_TestBitmapUniformity(pBitmap, 7, maxLevelIndex)
+   If !hBitmap
+      return -3
 
-      If (pBitmap && isUniform=1 && maxLevelIndex<=2)
-      {
-         Gdip_DisposeImage(pBitmap, 1)
-         pBitmap := Gdip_CreateBitmapFromHBITMAP(hBitmap)
-      }
-      DeleteObject(hBitmap)
-   }
-
+   pBitmap := Gdip_CreateARGBBitmapFromHBITMAP(hBitmap) ; this function can return a completely empty/transparent bitmap
+   DeleteObject(hBitmap)
    if !pBitmap
       return -4
+
+   isUniform := Gdip_TestBitmapUniformity(pBitmap, 7, maxLevelIndex)
+   If (isUniform=1 && maxLevelIndex<=2)
+   {
+      Gdip_DisposeImage(pBitmap, 1)
+      pBitmap := Gdip_CreateBitmapFromHBITMAP(hBitmap)
+   }
 
    return pBitmap
 }
@@ -3366,9 +3364,9 @@ Gdip_ImageRotateFlip(pBitmap, RotateFlipType:=1) {
 ; Rotate90FlipNone     = 1
 ; Rotate180FlipNone    = 2
 ; Rotate270FlipNone    = 3
-; RotateNoneFlipX      = 4
+; RotateNoneFlipX      = 4   // flip horizontally
 ; Rotate90FlipX        = 5
-; Rotate180FlipX       = 6
+; Rotate180FlipX       = 6   // flip vertically
 ; Rotate270FlipX       = 7
 ; RotateNoneFlipY      = Rotate180FlipX
 ; Rotate90FlipY        = Rotate270FlipX
@@ -3385,7 +3383,7 @@ Gdip_ImageRotateFlip(pBitmap, RotateFlipType:=1) {
 Gdip_RotateBitmapAtCenter(pBitmap, Angle, pBrush:=0, InterpolationMode:=7, PixelFormat:=0) {
 ; the pBrush will be used to fill the background of the image
 ; by default, it is black.
-; It returns the pointer to a new pBitmap.
+; The function returns the pointer to a new pBitmap.
     If !pBitmap
        Return
 
@@ -3395,7 +3393,8 @@ Gdip_RotateBitmapAtCenter(pBitmap, Angle, pBrush:=0, InterpolationMode:=7, Pixel
     Gdip_GetImageDimensions(pBitmap, Width, Height)
     Gdip_GetRotatedDimensions(Width, Height, Angle, RWidth, RHeight)
     Gdip_GetRotatedTranslation(Width, Height, Angle, xTranslation, yTranslation)
-    If (RWidth*RHeight>536847512) || (Rwidth>32750) || (RHeight>32750)
+    mpx := Round((RWidth * RHeight)/1000000, 1)
+    If (mpx>536.4 || RWidth>32750 || RHeight>32750)
        Return
 
     PixelFormatReadable := Gdip_GetImagePixelFormat(pBitmap, 2)
@@ -3487,6 +3486,8 @@ Gdip_ResizeBitmap(pBitmap, givenW, givenH, KeepRatio, InterpolationMode:="", Kee
        ResizedH := givenH
     }
 
+    If (Width=resizedW && Height=resizedH)
+       Return Gdip_CloneBitmap(pBitmap)
 
     mpx := Round((ResizedW * ResizedH)/1000000, 1)
     PixelFormatReadable := Gdip_GetImagePixelFormat(pBitmap, 2)
@@ -5675,6 +5676,7 @@ Gdip_AddPathPath(pPathA, pPathB, fConnect) {
 
 Gdip_AddPathToPath(pPathA, pPathB, fConnect) {
 ; Adds a path into another path.
+; pathB will be added / inserted into pathA
 ;
 ; Parameters:
 ; pPathA and pPathB - Pointers to GraphicsPath objects
@@ -5874,6 +5876,7 @@ Gdip_ReversePath(pPath) {
 }
 
 Gdip_IsOutlineVisiblePathPoint(pGraphics, pPath, pPen, X, Y) {
+; pGraphics is optional; you can pass 0 for pGraphics
    result := 0
    E := DllCall("gdiplus\GdipIsOutlineVisiblePathPoint", "UPtr", pPath, "float", X, "float", Y, "UPtr", pPen, "UPtr", pGraphics, "int*", result)
    If E 
@@ -5883,6 +5886,7 @@ Gdip_IsOutlineVisiblePathPoint(pGraphics, pPath, pPen, X, Y) {
 
 Gdip_IsVisiblePathPoint(pPath, x, y, pGraphics) {
 ; Function by RazorHalo, modified by Marius Șucan
+; Hit test function
   result := 0
   E := DllCall("gdiplus\GdipIsVisiblePathPoint", "UPtr", pPath, "float", x, "float", y, "UPtr", pGraphics, "UPtr*", result)
   If E
@@ -5941,8 +5945,8 @@ Gdip_SetInterpolationMode(pGraphics, InterpolationMode) {
 ; Bilinear = 3
 ; Bicubic = 4 [very slow]
 ; NearestNeighbor = 5 [fastest]
-; HighQualityBilinear = 6
-; HighQualityBicubic = 7 [fast]
+; HighQualityBilinear = 6 [fast]
+; HighQualityBicubic = 7
 
 ; NOTES: The drawing of GDI+ Bitmaps is limited to a size of 32767 pixels
 ; in either direction (width, height). This limit applies only if the
@@ -5971,7 +5975,7 @@ Gdip_SetSmoothingMode(pGraphics, SmoothingMode) {
 Gdip_SetCompositingMode(pGraphics, CompositingMode) {
 ; CompositingMode_SourceOver = 0 (blended / default)
 ; CompositingMode_SourceCopy = 1 (overwrite)
-   If !pGraphics
+   If (pGraphics="")
       Return 2
 
    return DllCall("gdiplus\GdipSetCompositingMode", "UPtr", pGraphics, "int", CompositingMode)
@@ -5984,7 +5988,7 @@ Gdip_SetCompositingQuality(pGraphics, CompositionQuality) {
 ; 2 - Gamma correction is applied. Composition of high quality and speed.
 ; 3 - Gamma correction is applied.
 ; 4 - Gamma correction is not applied. Linear values are used.
-   If !pGraphics
+   If (pGraphics="")
       Return 2
 
    Return DllCall("gdiplus\GdipSetCompositingQuality", "UPtr", pGraphics, "int", CompositionQuality)
@@ -5994,7 +5998,7 @@ Gdip_SetPageScale(pGraphics, Scale) {
 ; Sets the scaling factor for the page transformation of a pGraphics object.
 ; The page transformation converts page coordinates to device coordinates.
 
-   If !pGraphics
+   If (pGraphics="")
       Return 2
 
    Return DllCall("gdiplus\GdipSetPageScale", "UPtr", pGraphics, "float", Scale)
@@ -6010,7 +6014,7 @@ Gdip_SetPageUnit(pGraphics, Unit) {
 ; 4 - A unit is 1 inch
 ; 5 - A unit is 1/300 inch
 ; 6 - A unit is 1 millimeter
-   If !pGraphics
+   If (pGraphics="")
       Return 2
 
    Return DllCall("gdiplus\GdipSetPageUnit", "UPtr", pGraphics, "int", Unit)
@@ -6197,7 +6201,7 @@ Gdip_SetWorldTransform(pGraphics, hMatrix) {
 }
 
 Gdip_GetRotatedTranslation(Width, Height, Angle, ByRef xTranslation, ByRef yTranslation) {
-   Static pi := 3.14159
+   Static pi := 3.141592653
    TAngle := Angle*(pi/180)
 
    Bound := (Angle >= 0) ? Mod(Angle, 360) : 360-Mod(-Angle, -360)
@@ -6212,14 +6216,16 @@ Gdip_GetRotatedTranslation(Width, Height, Angle, ByRef xTranslation, ByRef yTran
 }
 
 Gdip_GetRotatedDimensions(Width, Height, Angle, ByRef RWidth, ByRef RHeight) {
-; modified by Marius Șucan; removed Ceil()
-   Static pi := 3.14159
+; modified by Marius Șucan
+   Static pi := 3.141592653
    if !(Width && Height)
       return -1
 
    TAngle := Angle*(pi/180)
-   RWidth := Abs(Width*Cos(TAngle))+Abs(Height*Sin(TAngle))
-   RHeight := Abs(Width*Sin(TAngle))+Abs(Height*Cos(Tangle))
+   cTAngle := Cos(TAngle)
+   sTAngle := Sin(TAngle)
+   RWidth := Abs(Width * cTAngle) + Abs(Height * sTAngle)
+   RHeight := Abs(Width * sTAngle) + Abs(Height * cTangle)
 }
 
 Gdip_GetRotatedEllipseDimensions(Width, Height, Angle, ByRef RWidth, ByRef RHeight) {
@@ -6237,7 +6243,7 @@ Gdip_GetRotatedEllipseDimensions(Width, Height, Angle, ByRef RWidth, ByRef RHeig
    thisBMP := Gdip_CreateBitmap(10, 10)
    dummyG := Gdip_GraphicsFromImage(thisBMP)
    Gdip_SetClipPath(dummyG, pPath) ; it is more accurate to use this instead of Gdip_GetPathWorldBounds()
-   pathBounds := Gdip_GetClipBounds(pPath)
+   pathBounds := Gdip_GetClipBounds(dummyG)
    Gdip_DeletePath(pPath)
    RWidth := pathBounds.w
    RHeight := pathBounds.h
@@ -6398,6 +6404,7 @@ Gdip_SetClipRect(pGraphics, x, y, w, h, CombineMode:=0) {
 }
 
 Gdip_SetClipPath(pGraphics, pPath, CombineMode:=0) {
+   ; this can become very slow with very large paths
    return DllCall("gdiplus\GdipSetClipPath", "UPtr", pGraphics, "UPtr", pPath, "int", CombineMode)
 }
 
@@ -7480,6 +7487,24 @@ Gdip_RotatePathAtCenter(pPath, Angle, MatrixOrder:=1, withinBounds:=0, withinBke
      Gdip_DisposeImage(thisBMP)
   }
 
+  Return E
+}
+
+Gdip_ScalePathAtCenter(pPath, ScaleX, ScaleY) {
+  ; Calculate center of bounding rectangle which will be the center of the graphics path
+  Rect := Gdip_GetPathWorldBounds(pPath)
+  cX := Rect.x + (Rect.w / 2)
+  cY := Rect.y + (Rect.h / 2)
+  
+  ; Create a Matrix for the transformations
+  pMatrix := Gdip_CreateMatrix()
+  Gdip_TranslateMatrix(pMatrix, cX , cY)
+  Gdip_ScaleMatrix(pMatrix, ScaleX, ScaleY)
+  Gdip_TranslateMatrix(pMatrix, -cX, -cY)
+
+  ; Apply the transformations
+  E := Gdip_TransformPath(pPath, pMatrix)
+  Gdip_DeleteMatrix(pMatrix)
   Return E
 }
 
@@ -9234,6 +9259,10 @@ calcIMGdimensions(imgW, imgH, givenW, givenH, ByRef ResizedW, ByRef ResizedH) {
       ResizedH := (imgH >= givenH) ? givenH : imgH
       ResizedW := Round(ResizedH * PicRatio)
    }
+   If (ResizedW<1)
+      ResizedW := 1
+   If (ResizedH<1)
+      ResizedH := 1
 }
 
 GetWindowRect(hwnd, ByRef W, ByRef H) {
@@ -9301,6 +9330,58 @@ Gdip_BitmapConvertGray(pBitmap, hue:=0, vibrance:=-40, brightness:=1, contrast:=
        Gdip_DisposeImage(nBitmap, 1)
 
     Return newBitmap
+}
+
+Gdip_BitmapApplyHSL(pBitmap, hue, saturation, lightness) {
+; hue [-180, 180]
+; saturation [-100, 100]
+; light [-100, 100]
+; if succesful, returns 0
+
+    If (pBitmap="")
+       Return -2
+
+    pEffect := Gdip_CreateEffect(6, hue, saturation, lightness)
+    If !pEffect
+       Return -1
+
+    E := Gdip_BitmapApplyEffect(pBitmap, pEffect)
+    Gdip_DisposeEffect(pEffect)
+    Return E
+}
+
+Gdip_BitmapApplyTint(pBitmap, hue, amount) {
+; hue [-180, 180]
+; amount [0, 100]
+; if succesful, returns 0
+
+    If (pBitmap="")
+       Return -2
+
+    pEffect := Gdip_CreateEffect(8, hue, amount)
+    If !pEffect
+       Return -1
+
+    E := Gdip_BitmapApplyEffect(pBitmap, pEffect)
+    Gdip_DisposeEffect(pEffect)
+    Return E
+}
+
+Gdip_BitmapApplyBrightnessContrast(pBitmap, brightness, contrast) {
+; brightness [-255, 255]
+; contrast [-100, 100]
+; if succesful, returns 0
+
+    If (pBitmap="")
+       Return -2
+
+    pEffect := Gdip_CreateEffect(5, brightness, contrast)
+    If !pEffect
+       Return -1
+
+    E := Gdip_BitmapApplyEffect(pBitmap, pEffect)
+    Gdip_DisposeEffect(pEffect)
+    Return E
 }
 
 Gdip_BitmapSetColorDepth(pBitmap, bitsDepth, useDithering:=1) {
@@ -9527,4 +9608,150 @@ Gdip_ErrorHandler(errCode, throwErrorMsg, additionalInfo:="") {
       MsgBox, % GdipErrMsg
 
    Return GdipErrMsg
+}
+
+class Gdip_GraphicsPathIterator {
+    __New(pPath) {
+        ; Create GraphicsPathIterator
+        If !pPath
+        {
+           this.error := 2
+           return
+        }
+
+        this.error := DllCall("gdiplus\GdipCreatePathIter", "UPtr*", pIterator:=0, "UPtr", pPath)
+        If pIterator
+           this.ptr := pIterator
+    }
+
+    Discard() {
+        If (this.ptr)
+        {
+           DllCall("gdiplus\GdipDeletePathIter", "UPtr", this.ptr)
+           this.error := ""
+           this.ptr := ""
+        }
+    }
+
+    HasCurve() {
+        ; the function returns 0 when the path contains only polygonal lines; if it contains  beziers, it returns 1
+        ; on error , the return value is -1
+
+        n := -1
+        If (this.ptr)
+           this.error := DllCall("gdiplus\GdipPathIterHasCurve", "UPtr", this.ptr, "int*", n)
+
+        Return n
+    }
+    
+    NextSubpath() {
+        ; Get next subpath information
+        this.error := DllCall("gdiplus\GdipPathIterNextSubpath"
+                     , "UPtr", this.ptr
+                     , "Int*", resultCount:=0
+                     , "Int*", startIndex:=0
+                     , "Int*", endIndex:=0
+                     , "Int*", isClosed:=0)
+        
+        return {count: resultCount
+            , startIndex: startIndex
+            , endIndex: endIndex
+            , isClosed: isClosed}
+    }
+    
+    NextPathType() {
+        ; Get next path point type
+        this.error := DllCall("gdiplus\GdipPathIterNextPathType"
+                     , "UPtr", this.ptr
+                     , "Int*", resultCount:=0
+                     , "UChar*", pathType:=0
+                     , "Int*", startIndex:=0
+                     , "Int*", endIndex:=0)
+            
+        return {count: resultCount
+            , pathType: pathType
+            , startIndex: startIndex
+            , endIndex: endIndex}
+    }
+    
+    NextMarker() {
+        ; Get next marker
+        this.error := DllCall("gdiplus\GdipPathIterNextMarker"
+            , "UPtr", this.ptr
+            , "Int*", resultCount:=0
+            , "Int*", startIndex:=0
+            , "Int*", endIndex:=0)
+            
+        return {count: resultCount
+            , startIndex: startIndex
+            , endIndex: endIndex}
+    }
+    
+    GetCount() {
+        ; Get total number of points
+        n := 0
+        this.error := DllCall("gdiplus\GdipPathIterGetCount", "UPtr", this.ptr, "Int*", n)
+        return n
+    }
+    
+    GetSubpathCount() {
+        ; Get number of subpaths
+        n := 0
+        this.error := DllCall("gdiplus\GdipPathIterGetSubpathCount", "UPtr", this.ptr, "Int*", n)
+        return n
+    }
+    
+    Rewind() {
+        ; Reset iterator position to start
+        this.error := DllCall("gdiplus\GdipPathIterRewind", "UPtr", this.ptr)
+        Return this.error
+    }
+    
+    CopyData(ByRef points, ByRef types, startIndex, endIndex) {
+        ; Copy path data to arrays
+        pointCount := endIndex - startIndex + 1
+        VarSetCapacity(pointsBuffer, 8 * pointCount * A_PtrSize)
+        VarSetCapacity(typesBuffer, pointCount)
+        resultCount := 0
+        this.error := DllCall("gdiplus\GdipPathIterCopyData"
+            , "UPtr", this.ptr
+            , "Int*", resultCount
+            , "UPtr", &pointsBuffer
+            , "UPtr", &typesBuffer
+            , "Int", startIndex
+            , "Int", endIndex)
+            
+        ; Convert buffer data to arrays
+        If !this.error
+        {
+           points := []
+           types := []
+           Loop, % resultCount {
+               offset := (A_Index-1) * 8
+               points.Push(NumGet(pointsBuffer, offset, "Float"))
+               points.Push(NumGet(pointsBuffer, offset+4, "Float"))
+               types.Push(NumGet(typesBuffer, A_Index-1, "UChar"))
+           }
+        }
+        return resultCount
+    }
+
+    GetSubPath(startIndex, endIndex, fillMode:=0) {
+        pPath := 0
+        pointCount := endIndex - startIndex + 1
+        VarSetCapacity(pointsBuffer, 8 * pointCount * A_PtrSize)
+        VarSetCapacity(typesBuffer, pointCount)
+        resultCount := 0
+        this.error := DllCall("gdiplus\GdipPathIterCopyData"
+                        , "UPtr", this.ptr
+                        , "Int*", resultCount
+                        , "UPtr", &pointsBuffer
+                        , "UPtr", &typesBuffer
+                        , "Int", startIndex
+                        , "Int", endIndex)
+
+        If !this.error
+           this.error := DllCall("gdiplus\GdipCreatePath2", "UPtr", &pointsBuffer, "UPtr", &typesBuffer, "Int", resultCount, "UInt", fillMode, "UPtr*", pPath)
+        return pPath
+    }
 }

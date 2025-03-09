@@ -1,5 +1,5 @@
 # CONTENTS SUMMARY
-- Functions list [v1.96 - 22/08/2023]
+- Functions list [v1.97 - 28/01/2025]
 - What is new (a comparision with the original version of GDI+ library wrapper by Tic)
 - Credits [who made what]
 - What is still left to implement
@@ -54,6 +54,7 @@ Please note, this is not a complete list of all the functions.
  - Gdip_ScalePath(pPath, x, y)
  - Gdip_RotatePath(pPath, angle)
  - Gdip_WidenPath(pPath, pPen, hMatrix:=0, Flatness:=1)
+ - Gdip_GraphicsPathIterator class
 
 ## 43 Pen object functions
  - Gdip_ClonePen(pPen)
@@ -179,9 +180,12 @@ Please note, this is not a complete list of all the functions.
  - Gdip_GetHatchForegroundColor(pHatchBrush)
  - Gdip_GetHatchStyle(pHatchBrush)
 
-## 61 pBitmap functions
+## 64 pBitmap functions
  - Gdip_BoxBlurBitmap(pBitmap, passes)
  - Gdip_BitmapApplyEffect(pBitmap, pEffect, x:="", y:="", w:="", h:=0)
+ - Gdip_BitmapApplyHSL(pBitmap, hue, saturation, lightness)
+ - Gdip_BitmapApplyTint(pBitmap, hue, amount)
+ - Gdip_BitmapApplyBrightnessContrast(pBitmap, brightness, contrast)
  - Gdip_BitmapConvertFormat(pBitmap, PixelFormat, DitherType, DitherPaletteType, PaletteEntries, PaletteType, OptimalColors, UseTransparentColor:=0, AlphaThresholdPercent:=0)
  - Gdip_BitmapConvertGray(pBitmap, hue:=0, vibrance:=-40, brightness:=1, contrast:=0, KeepPixelFormat:=0)
  - Gdip_BitmapFromBase64(ByRef Base64)
@@ -879,8 +883,8 @@ The following list is comparing Gdip_All.ahk by Tariq Porter and Rseding91 modif
 (*) mainly written by swagfag, but at my request and modified it further
     - https://www.autohotkey.com/boards/viewtopic.php?f=6&t=62550
 
-# 110 GDI+ functions still missing
-In short, functions related to Custom Line Caps for lines, ImagePalette management, PathIterator objects and Metafiles... are entirely omitted.
+# 100 GDI+ functions still missing
+In short, functions related to Custom Line Caps for lines, ImagePalette management and Metafiles... are entirely omitted.
 
  - GdipAddPathCurve3
  - GdipAddPathRectangles
@@ -897,8 +901,6 @@ In short, functions related to Custom Line Caps for lines, ImagePalette manageme
  - GdipCreateMetafileFromStream
  - GdipCreateMetafileFromWmf
  - GdipCreateMetafileFromWmfFile
- - GdipCreatePathIter
- - GdipDeletePathIter
  - GdipDrawCurve3
  - GdipDrawRectangles
  - GdipEmfToWmfBits
@@ -945,18 +947,10 @@ In short, functions related to Custom Line Caps for lines, ImagePalette manageme
  - GdipMeasureCharacterRanges
  - GdipMeasureDriverString
  - GdipNewInstalledFontCollection
- - GdipPathIterCopyData
  - GdipPathIterEnumerate
- - GdipPathIterGetCount
- - GdipPathIterGetSubpathCount
- - GdipPathIterHasCurve
  - GdipPathIterIsValid
- - GdipPathIterNextMarker
  - GdipPathIterNextMarkerPath
- - GdipPathIterNextPathType
- - GdipPathIterNextSubpath
  - GdipPathIterNextSubpathPath
- - GdipPathIterRewind
  - GdipPlayMetafileRecord
  - GdipPrivateAddMemoryFont
  - GdipRecordMetafile
