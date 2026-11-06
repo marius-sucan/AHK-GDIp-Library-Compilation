@@ -2427,7 +2427,7 @@ Gdip_GetEncoderParameterList(pBitmap, pCodec, ByRef EncoderParameters) {
 ;
 ; pBitmap          Pointer to a GDI+ bitmap
 ; sOutput          The name of the file that the bitmap will be saved to. Supported extensions and formats: .BMP,.DIB,.RLE,.JPG,.JPEG,.JPE,.JFIF,.GIF,.TIF,.TIFF,.PNG
-;                  When using toBase64=1, the file extension will be used to choose the image encoder.
+;                  When using toBase64orStream=1, the file extension will be used to choose the image encoder.
 ;
 ; Quality          If saving as jpg (.JPG,.JPEG,.JPE,.JFIF) then quality can be 1-100
 ;
@@ -2474,7 +2474,7 @@ Gdip_SaveBitmapToFile(pBitmap, sOutput, Quality:=75, toBase64orStream:=0) {
    If (Quality!=75)
    {
       Quality := (Quality < 0) ? 0 : (Quality > 100) ? 100 : Quality
-      If (quality>95 && toBase64=1)
+      If (quality>95 && toBase64orStream=1)
          Quality := 95
 
       If RegExMatch(Extension, "^\.(?i:JPG|JPEG|JPE|JFIF)$")
